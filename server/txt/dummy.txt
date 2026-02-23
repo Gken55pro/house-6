@@ -1,0 +1,29 @@
+if(!err){
+            data.forEach((doc)=>{
+                if(doc.status != "canceled"){
+                    const { _id, roomId, userId, date } = doc;
+                    bookings.push({ _id, roomId, userId, sale: 1, date});
+                };
+            });
+        };
+
+
+
+
+
+
+
+
+
+
+
+        await AdminBooking.find({}, (err, data)=>{
+        if(!err){
+            data.forEach((doc)=>{
+                if(doc.status != "canceled"){
+                    const { _id, roomId, userId, date } = doc;
+                    bookings.push({ _id, roomId, userId, sale: 1, date});
+                };
+            });
+        };
+    });
