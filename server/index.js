@@ -41,6 +41,7 @@ const WebReview = require("./models/web_reviews");
 const FAQ = require("./models/FAQ.js");
 const PendingReceipt = require("./models/pending_receipt.js");
 const FlaggedDown = require("./models/flagged_down_transaction.js");
+const e = require("express");
 
 
 
@@ -7738,6 +7739,756 @@ app.get("/admin_activity_array", async(req, res)=>{
     };
 });
 
+
+// generate days in week
+function generateDaysInWeek(start, end, type){
+    const days = [];
+
+    var startDate = start;
+    var endDate = end;
+
+    while(startDate <= endDate){
+        var newDay = startDate;
+
+        if(!type || type === "iso_string"){
+            days.push({date: newDay.toISOString()});
+        }else if(type === "formatted"){
+            days.push({date: newDay.format("MMM DD YYYY")});
+        };
+
+        startDate.add(1, "days");
+    };
+
+    return(days)
+
+};
+
+// generate week and week days
+function generateWeeks(){
+
+    // define data to return
+    const data = [];
+
+    // todays date
+    const date = moment().clone();
+
+    // extract current year
+    const thisYear = date.clone().year();
+
+    // extract the total number of weeks in this year
+    const totalWeeksInYear = moment().isoWeeksInYear(thisYear);
+
+    // define weeks array
+    const weeks = [];
+
+    // define i
+    var i = 1;
+
+    // extract all start and end of each weeks in the total weeks in this year
+    while(i < (totalWeeksInYear + 1)){
+
+        const startOfweek = moment().isoWeek(i).startOf("week");
+        const endOfweek = moment().isoWeek(i).endOf("week");
+
+        const daysInWeek = generateDaysInWeek(startOfweek.clone(), endOfweek.clone(), "formatted");
+
+        const newWeek = { startOfweek: startOfweek.format("MMM DD YYYY"), endOfweek: endOfweek.format("MMM DD YYYY"), days: daysInWeek, i };
+        // .format("MMM DD YYYY") .toISOString() , days: daysInWeek
+
+        weeks.push(newWeek);
+
+        i++;
+
+    };
+
+    // check if loop is completed
+    if(i === (totalWeeksInYear + 1)){
+
+        if(moment().startOf("week").format("MMM DD YYYY") !== weeks[0].startOfweek){
+            // push each items in weeks array to data array
+            weeks.forEach((doc)=>{data.push(doc)});
+        }else{
+
+            // extract current year
+            const previousYear = date.clone().subtract(1, "year").year();
+
+            // extract the total number of weeks in this year
+            const totalWeeksInPreviousYear = moment().isoWeeksInYear(previousYear);
+
+            const startOfweek = moment().year(previousYear).isoWeek(totalWeeksInPreviousYear).startOf("week");
+            const endOfweek = moment().year(previousYear).isoWeek(totalWeeksInPreviousYear).endOf("week");
+
+            const daysInWeek = generateDaysInWeek(startOfweek.clone(), endOfweek.clone(), "formatted");
+
+            const newWeek = { startOfweek: startOfweek.format("MMM DD YYYY"), endOfweek: endOfweek.format("MMM DD YYYY"), days: daysInWeek, i };
+
+            data.push(newWeek);
+
+            // push each items in weeks array to data array
+            weeks.forEach((doc)=>{data.push(doc)});
+        };
+
+    }else{
+        // do nothing other than this
+        console.log("error", i)
+    };
+
+    // return data
+    return data;
+};
+
+// compare create weeks data
+function createWeekData(weeks, daysList){
+
+    // define date
+    const date = moment();
+
+    // define data array
+    const data = [];
+
+    // define processed data
+    const processedData = [];
+
+    // define points
+    var points = 0;
+
+    // define amount
+    var amount = 0;
+
+    // loop through weeks
+    var i = 0;
+
+    while(i < weeks.length){
+
+        // define week
+        const week = weeks[i];
+
+        // destructure week
+        const { startOfweek, endOfweek, days } = week;
+
+        // loop through days list
+        var r = 0;
+
+        while(r < daysList.length){
+            // define day
+            const day = daysList[r];
+
+            // define formatted day
+            const formattedDay = moment(day.date).format("MMM DD YYYY");
+
+            // check if formatted day is includede
+            const isIncluded = days.filter((doc)=>{return(doc.date === formattedDay)})[0];
+
+            // conditional statement for if formatted day is included
+            if(isIncluded){
+                // do something
+
+                // increate points by day point
+                points += day.points;
+
+                // increase amount by day amount
+                amount += day.amount;
+
+                // move on to the next element in week days array
+                r++;
+            }else{
+                // do nothing
+                // move on to the next element in week days array
+                r++;
+            };
+
+            // if the loop for the comparison is done, move on to the next element in weeks array
+            if(r === daysList.length){
+
+                // define new data
+                const newData = { startOfweek, endOfweek, days, points, amount };
+
+                // push the new updated data to data array
+                data.push(newData);
+
+                // reset points to 0 for next element is weeks array
+                points = 0;
+
+                // reset amount to 0 for next element is weeks array
+                amount = 0;
+
+                // increase i by one
+                // move on to the next element in weeks array
+                i++;
+            };
+        };
+        // end of loop through days list
+
+    };
+    // end of loop through weeks
+
+    // process data to current week
+    data.forEach((week)=>{
+        if(moment(week.startOfweek).isBefore(date) || moment(week.startOfweek).isSame(date)){
+            // if the start of the week is not before the current date, add it to processed data
+            processedData.push(week);
+        }else{
+            // do nothing
+        };
+    });
+
+    // return data
+    return processedData;
+};
+
+// generate months
+function generateMonths(year){
+
+    // define data to return
+    const data = [];
+
+    // todays date
+    const date = moment().clone();
+
+    // extract current year
+    const thisYear = date.clone().year();
+
+
+    if(!year || year === thisYear){
+        // if year is not equals to current year
+        const thisMonth = date.clone().month();
+
+        var i = 0;
+
+        while(i <= thisMonth){
+            const month = moment().month(i).toISOString();
+            data.push({ month });
+            i++;
+        };
+
+    }else if(year !== thisYear){
+        // if year is not equals to current year
+        const thisMonth = date.clone();
+        
+        var i = 0;
+
+        const firstMonth = moment().year(year).month(0);
+
+        const diffMonth = thisMonth.diff(firstMonth, "months");
+
+        while(i <= diffMonth){
+            const month = moment().year(year).month(i).toISOString();
+            data.push({ month });
+            i++;
+        };
+    };
+
+    
+
+    // return data
+    return data;
+};
+
+// compare create months data
+function createMonthData(months, daysList){
+
+    // define data array
+    const data = [];
+
+    // define points
+    var points = 0;
+
+    // define amount
+    var amount = 0;
+
+    // loop through weeks
+    var i = 0;
+
+    while(i < months.length){
+
+        // define month
+        const { month } = months[i];
+
+        // loop through days list
+        var r = 0;
+
+        while(r < daysList.length){
+            // define day
+            const day = daysList[r];
+
+            // define formatted day
+            const formattedDay = moment(day.date).format("MMM");
+
+            // conditional statement for if month is equals to formatted month
+            if(moment(month).format("MMM") === formattedDay){
+                // do something
+
+                // increase points by day point
+                points += day.points;
+
+                // increase amount by day amount
+                amount += day.amount;
+
+                // move on to the next element in months array
+                r++;
+            }else{
+                // do nothing
+                // move on to the next element in week months array
+                r++;
+            };
+
+            // if the loop for the comparison is done, move on to the next element in months array
+            if(r === daysList.length){
+
+                // define new data
+                const newData = { month, points, amount, iso: moment(month).format("MMM") };
+
+                // push the new updated data to data array
+                data.push(newData);
+
+                // reset points to 0 for next element in months array
+                points = 0;
+
+                // reset amount to 0 for next element in months array
+                amount = 0;
+
+                // increase i by one
+                // move on to the next element in months array
+                i++;
+            };
+        };
+        // end of loop through days list
+
+    };
+    // end of loop through months
+
+    // return data
+    return data;
+};
+
+// generate year
+function generateYears(year){
+    // define data array
+    const data = [];
+
+    // define current year
+    const currentYear = moment().clone().year();
+
+    // define start year
+    var startYear = null;
+
+    if(year < currentYear){
+        startYear = currentYear;
+    }else{
+        startYear = currentYear - 1;
+    };
+
+    while(startYear <= currentYear){
+        // define new data
+        const newData = { year: startYear }; 
+
+        // push new data to data array
+        data.push(newData);
+
+        // increase the start year by one
+        startYear++;
+    };
+
+    return(data);
+};
+
+// compare create year data
+function createYearData(years, daysList){
+
+    // define data array
+    const data = [];
+
+    // define points
+    var points = 0;
+
+    // define amount
+    var amount = 0;
+
+    // loop through weeks
+    var i = 0;
+
+    while(i < years.length){
+
+        // define year
+        const { year } = years[i];
+
+        // loop through days list
+        var r = 0;
+
+        while(r < daysList.length){
+            // define day
+            const day = daysList[r];
+
+            // define formatted day
+            const formattedDay = moment(day.date).year();
+
+            // conditional statement for if year is equals to formatted year
+            if(year === formattedDay){
+                // do something
+
+                // increase points by day point
+                points += day.points;
+
+                // increase amount by day amount
+                amount += day.amount;
+
+                // move on to the next element in years array
+                r++;
+            }else{
+                // do nothing
+                // move on to the next element in years array
+                r++;
+            };
+
+            // if the loop for the comparison is done, move on to the next element in years array
+            if(r === daysList.length){
+
+                // define new data
+                const newData = { year, points, amount };
+
+                // push the new updated data to data array
+                data.push(newData);
+
+                // reset points to 0 for next element in years array
+                points = 0;
+
+                // reset amount to 0 for next element in years array
+                amount = 0;
+
+                // increase i by one
+                // move on to the next element in years array
+                i++;
+            };
+        };
+        // end of loop through days list
+
+    };
+    // end of loop through months
+
+    // return data
+    return data;
+};
+
+// compare create year data
+function createYearlyCustomerData(years, users){
+
+    // define data array
+    const data = [];
+
+    // define points
+    var points = 0;
+
+    // loop through weeks
+    var i = 0;
+
+    while(i < years.length){
+
+        // define year
+        const { year } = years[i];
+
+        // loop through users list
+        var r = 0;
+
+        while(r < users.length){
+            // define user date
+            const { date } = users[r];
+
+            // define formatted day
+            const formattedDay = moment(date).year();
+
+            // conditional statement for if year is equals to formatted year
+            if(year === formattedDay){
+                // do something
+
+                // increase points by day point
+                points ++;
+
+                // move on to the next element in years array
+                r++;
+            }else{
+                // do nothing
+                // move on to the next element in years array
+                r++;
+            };
+
+            // if the loop for the comparison is done, move on to the next element in years array
+            if(r === users.length){
+
+                // define new data
+                const newData = { year, points };
+
+                // push the new updated data to data array
+                data.push(newData);
+
+                // reset points to 0 for next element in years array
+                points = 0;
+
+                // increase i by one
+                // move on to the next element in years array
+                i++;
+            };
+        };
+        // end of loop through users list
+
+    };
+    // end of loop through months
+
+    // return data
+    return data;
+};
+
+// percentage comparison
+function percentageComparison(firstNumber, secondNumber){
+         
+    if(firstNumber !==0 && secondNumber !== 0){
+        // get one percent by dividing first number by 100
+        const onePercent = firstNumber/100;
+        // get prev percentage by by multiplying it by one percent
+        const prevPercentage = onePercent * firstNumber;
+        // get current percentage by dividing second number by one percent
+        const currentPercentage = secondNumber/onePercent;
+
+        if(currentPercentage > prevPercentage){
+
+            // if current percentage is greater than prev percentage, we subtract 100% percent from it
+            const difference = Number((currentPercentage - 100).toFixed(2));
+            return({increase: true, percentage: difference});
+
+        }else if(currentPercentage < prevPercentage){
+
+            // if current percentage is lesser than prev percentage, we subtract it percent from 100% since it is not up to
+            const difference = Number((100 - currentPercentage).toFixed(2));
+            return({increase: false, percentage: difference});
+
+        };
+    }else if(firstNumber !== 0 && secondNumber === 0){
+        return({increase: false, percentage: -100});
+    }else if(firstNumber === 0 && secondNumber !== 0){
+        return({increase: true, percentage: 100});
+    }else if(firstNumber === 0 && secondNumber === 0){
+        return({increase: false, percentage: 0});
+    };
+};
+
+// process chart data
+const processData = async()=>{
+
+    const todaysDate = moment().toISOString();
+    const todaysDateUnformatted = moment();
+    const prevDateUnformatted = moment().subtract(1, "days");
+    // 
+    var currentDate = null;
+
+    // 
+    var lastDate = null;
+
+    const statisticsDataUsers = [];
+    const bookings = [];
+    const receipts = [];
+    const days = [];
+    const chartData = [];
+
+
+
+    // find users
+    await User.find({}, (err, data)=>{
+        if(!err){
+            data.reverse().forEach((doc)=>{
+                const { dateOfCreation } = doc;
+                statisticsDataUsers.push({date: dateOfCreation});
+            });
+        };
+    });
+
+    // find bookings
+    await AdminBooking.find({}, (err, data)=>{
+        if(!err){
+            data
+            .reverse()
+            .forEach((doc)=>{
+                if(doc.status != "canceled"){
+                    const { _id, roomId, userId, date } = doc;
+                    bookings.push({ _id, roomId, userId, sale: 1, date});
+                };
+            });
+        };
+    });
+    
+    // find receipts
+    await AdminReceipt.find({}, (err, data)=>{
+        if(!err){
+            data
+            .reverse()
+            .forEach((doc)=>{
+                const { _id, amount, date } = doc;
+                receipts.push({ _id, amount, date});
+            });
+        };
+    });
+
+
+    // Moment<2026-02-23T13:03:45+00:00> Moment<2026-02-22T13:03:45+00:00> {date: "2026-02-23T13:03:45+00:00"}, {date: "2026-02-20T13:03:45+00:00"}
+
+
+    // define difference
+    const diff = moment(todaysDate).diff(moment(bookings[bookings.length - 1].date), "days") > 0 ? moment(todaysDate).diff(moment(bookings[bookings.length - 1].date), "days") : 0;
+
+    // find booking first and last date
+    if(diff > 7){
+
+        console.log("greater than seven");
+
+        // 
+        currentDate = todaysDate;
+
+        // 
+        lastDate = bookings[bookings.length - 1].date;
+
+    }else if(diff < 7 && bookings.length != 0){
+
+        console.log("less than 7 and greater than zero")
+
+        // 
+        const newSubtractionNumber = 6 - diff;
+
+
+        // 
+        currentDate = bookings[0].date;
+
+        // 
+        const newLastDate = moment(bookings[bookings.length - 1].date).subtract(newSubtractionNumber, "days");
+
+        // 
+        lastDate = newLastDate.toISOString();
+
+
+    }else if(bookings.length == 0){
+
+        console.log("zero length");
+
+        // 
+        currentDate = todaysDate;
+
+        // 
+        const newLastDate = moment(todaysDate).subtract(7, "days");
+
+        // 
+        lastDate = newLastDate.toISOString();
+
+    };
+
+    // 
+    const loopCurrentDate = moment(currentDate);
+
+    // 
+    const loopLastDate = moment(lastDate).subtract(1, "days");
+
+    // start loop
+    while(loopLastDate.isBefore(loopCurrentDate)){
+
+        const newDate = loopLastDate.clone().add(1, "day");
+
+        loopLastDate.add(1, "days");
+
+        days.push({date: newDate});
+    };
+
+
+    // grouping booking and receipts according dates
+    // 
+    var g = 0;
+
+    while(g < days.length){
+
+        // 
+        const { date } = days[g];
+
+        // 
+        const formattedDate = moment(date).format("MMM DD YYYY");
+
+        // filtered bookings
+        const filteredBookings = bookings.filter((doc)=>{return(moment(doc.date).format("MMM DD YYYY") == formattedDate)});
+
+        // filtered and reduced receipts
+        const earnings = receipts.filter((doc)=>{return(moment(doc.date).format("MMM DD YYYY") == formattedDate)})
+        .reduce((total, value)=>{return(total + value.amount)}, 0);
+          
+        // 
+        if(filteredBookings.length != 0 && earnings != 0){
+            chartData.push({points: filteredBookings.length, amount: earnings, formattedDate: formattedDate, date: date});
+        }else{
+            chartData.push({points: 0, amount: 0, formattedDate: formattedDate, date: date});
+        };
+
+        // 
+        g++;
+    };
+
+
+    // generate week data
+    const weeks = generateWeeks();
+    const weeksData = createWeekData(weeks, chartData);
+
+
+    // generate month data
+    const months = generateMonths(todaysDateUnformatted.year());
+    const monthsData = createMonthData(months, chartData);
+    // end of generate month data
+
+    // moment(bookings[bookings.length - 1].date).year()?moment(bookings[bookings.length - 1].date).year():todaysDateUnformatted.year()
+
+    // generate year data 
+    const years = generateYears(todaysDateUnformatted.year());
+    const yearsData = createYearData(years, chartData);
+    const yearlyUsersData = createYearlyCustomerData(years, statisticsDataUsers);
+    // end of generate year data
+
+
+    // extract statistic box data
+    const currentWeek = moment();
+    const previousWeek = moment().subtract(1, "week");
+
+    const todaysData = chartData.filter((doc)=>{return(moment(doc.date).format("MMM DD YYYY") === todaysDateUnformatted.clone().format("MMM DD YYYY"))})[0];
+    const yesterdaysData = chartData.filter((doc)=>{return(moment(doc.date).format("MMM DD YYYY") === prevDateUnformatted.clone().format("MMM DD YYYY"))})[0];
+
+    const currentWeekData = weeksData.filter((doc)=>{return(doc.startOfweek === currentWeek.startOf("week").format("MMM DD YYYY"))})[0];
+    const previousWeekData = weeksData.filter((doc)=>{return(doc.startOfweek === previousWeek.startOf("week").format("MMM DD YYYY"))})[0];
+
+    const currentYearData = yearsData.filter((doc)=>{return(doc.year === moment().year())})[0];
+    const previousYearData = yearsData.filter((doc)=>{return(doc.year === moment().subtract(1, "year").year())})[0];
+
+    const currentYearCustomerData = yearlyUsersData.filter((doc)=>{return(doc.year === moment().year())})[0];
+    const previousYearCustomerData = yearlyUsersData.filter((doc)=>{return(doc.year === moment().subtract(1, "year").year())})[0];
+
+
+    /////////////////////////////////////////////////////////////////////////
+
+
+
+
+    // statistics box data calc
+    const weeklyEarnings = percentageComparison(previousWeekData.amount, currentWeekData.amount);
+    const weeklyEarningsInFigure = currentWeekData.amount;
+    const todaysEarnings = percentageComparison(yesterdaysData.amount, todaysData.amount);
+    const todaysEarningsInFigure = todaysData.amount;
+    const todaysBookings = percentageComparison(yesterdaysData.points, todaysData.points);
+    const todaysBookingsInFigure = todaysData.points;
+    const totalEarnings = percentageComparison(previousYearData.amount, currentYearData.amount);
+    const totalEarningsInFigure = currentYearData.amount;
+    const customersYearlyDataInFigure = currentYearCustomerData.points;
+    const customersYearlyData = percentageComparison(previousYearCustomerData.points, currentYearCustomerData.points);
+    // end statistics box data calc
+
+
+    // define new statistics box data
+    const newStatisticsBoxData = { totalEarnings, totalEarningsInFigure, weeklyEarnings, weeklyEarningsInFigure, todaysEarnings, todaysEarningsInFigure, todaysBookings, todaysBookingsInFigure, customersYearlyData, customersYearlyDataInFigure };
+
+    // return data
+    return({newStatisticsBoxData, chartData});
+
+};
+
+
 // import admin dashboard data
 app.post("/import_admin_dashboard_data", async(req, res)=>{
     // extract admin id
@@ -7748,9 +8499,7 @@ app.post("/import_admin_dashboard_data", async(req, res)=>{
         const admin = await Admin.findOne({_id: new ObjectId(adminId)});
 
         // chart data array
-        const chartData = [];
-        const chartDataProcessed = [];
-        const statisticsDataUsers = [];
+        
 
         // define users array
         const users = []; 
@@ -7770,68 +8519,17 @@ app.post("/import_admin_dashboard_data", async(req, res)=>{
                 data.forEach((doc)=>{
                     if(doc.status != "canceled"){
                         const { date, roomId, userId, } = doc;
-                        chartData.push({ date, roomId, userId, sale: 1});
                         bookings.push(doc);
                     };
                 });
             };
         });
 
-        // define i for while loop
-        var i = 0;
-
-        // process chart data
-        while(i < chartData.length){
-            const { date, roomId, userId } = chartData[i];
-
-            // find admin receipt
-            const adminReceipt =  await AdminReceipt.findOne({userId: userId, date: date})
-
-            if(adminReceipt){
-
-                const { rooms } = adminReceipt;
-        
-                if(rooms){
-                    const amount = rooms.filter((room)=>{return(room.roomId == roomId)})
-                    .reduce((total, value)=>{
-                        const { _id, checkIn, checkOut, roomId, persons, specialServices, price } = value;
-                        const checkInDate = moment(checkIn);
-                        const checkOutDate = moment(checkOut);
-
-                        const days = checkOutDate.diff(checkInDate, "days");
-
-                        const preItemPrice = price * persons * days;
-
-                        var newAmount = 0;
-
-                        if(specialServices == true){
-                            const percentage = (preItemPrice/100) * 5;
-                            newAmount = preItemPrice + percentage;
-                        }else{
-                            newAmount = preItemPrice;
-                        };
-
-                        return(newAmount + total);
-                    }, 0);
-
-                    chartDataProcessed.push({userId, roomId, date, amount});
-
-                    i++;
-                };
-
-            }else{
-                // move on to next if receipt wasn't found
-                i++;
-            };
-        };
-
         // find users
         await User.find({}, (err, data)=>{
             if(!err){
                 data.reverse().forEach((doc)=>{
-                    const { dateOfCreation } = doc;
                     users.push(doc);
-                    statisticsDataUsers.push({date: dateOfCreation});
                 });
             };
         });
@@ -7863,7 +8561,10 @@ app.post("/import_admin_dashboard_data", async(req, res)=>{
         // process receipts
         const newReceipts = await processReceipt(receipts);
 
-        res.status(200).json({message: "Import succesfull", admin, users: users.reverse().slice(0, 3), bookings: newBookings.slice(0, 3), transactions: newTransactions.slice(0, 3), receipts: newReceipts.slice(0, 3), chartData: chartDataProcessed, statisticsDataUsers, totalUsers: users.length});
+        // process chart data
+        const { newStatisticsBoxData, chartData } = await processData();
+
+        res.status(200).json({message: "Import succesfull", admin, users: users.reverse().slice(0, 3), bookings: newBookings.slice(0, 3), transactions: newTransactions.slice(0, 3), receipts: newReceipts.slice(0, 3), chartData: chartData, newStatisticsBoxData: newStatisticsBoxData, totalUsers: users.length});
     }catch(err){
         console.log(err);
         res.status(400).json({error: "Could not import dashboard data"});
