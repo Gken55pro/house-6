@@ -42,6 +42,7 @@ const FAQ = require("./models/FAQ.js");
 const PendingReceipt = require("./models/pending_receipt.js");
 const FlaggedDown = require("./models/flagged_down_transaction.js");
 const e = require("express");
+const { difference } = require("lodash");
 
 
 
@@ -1815,6 +1816,7 @@ app.get("/import_room_list", async(req, res)=>{
         const totalSearchResult = filterArray.length;
         
         if(i == filterArray.length){
+
             res.status(200).json({ message: "import successful", array: newRoomsArray.slice(startpoint, endpoint), totalSearchResult, totalPage, keywordsArray });
         };
 
@@ -2543,111 +2545,160 @@ const isValidBookingDates = async(cart)=>{
 
         // define room id
         const roomId = item.roomId;
+
+        // define cart room
+        const cartItem = await Room.findOne({_id: new ObjectId(roomId)});
         
-        // extract room booked and booking count
-        const { booked, booking_count } = await Room.findOne({_id: new ObjectId(roomId)});
+        // check if cart item exist
+        if(cartItem){
 
-        // room booked instance
-        if(booked === true){
-            
-            // make sure booking count is != 0
-            if(booking_count.length != 0){
+            // extract room booked and booking count
+            const { booked, booking_count } = cartItem;
 
-                // filter bookings by expired and arrange them in order of difference between current date and check_in date
-                const filteredBookings = booking_count.filter((guest)=>{return(guest.expired === false)})
-                .map((guest)=>{
-                    const { _id } = guest;
-                    const checkIn = moment(guest.check_in);
-                    const differenceInDate = currentDate.clone().diff(checkIn);
-                    const difference = moment(differenceInDate).milliseconds();
-                    return({_id, difference});
-                })
-                .sort((a, b) => a.difference - b.difference);
+            // room booked instance
+            if(booked === true){
                 
-                // define v
-                var v = 0;
+                // make sure booking count is != 0
+                if(booking_count.length != 0){
 
-                // define error points
-                var errorPoints = 0;
-                
-                // auth check for check-in and check-out dates
-                while(v < filteredBookings.length){
-                
-                    // current guest
-                    const currentGuest = booking_count.filter((doc)=>{return(doc._id == filteredBookings[v]._id)})[0];
-
-                    // define days array to contain the days between current guest check-in and check-out date
-                    const daysInCurrentGuestBookings = [];
-
-                    // define days array to contain the days between cart item booking check-in and check-out date
-                    // const daysInCartItemBookings = [];
+                    // filter bookings by expired and arrange them in order of difference between current date and check_in date
+                    const filteredBookings = booking_count.filter((guest)=>{return(guest.expired === false)})
+                    .map((guest)=>{
+                        const { _id } = guest;
+                        const checkIn = moment(guest.check_in);
+                        const differenceInDate = currentDate.clone().diff(checkIn);
+                        const difference = moment(differenceInDate).milliseconds();
+                        return({_id, difference});
+                    })
+                    .sort((a, b) => a.difference - b.difference);
                     
-                    // define new check in date
-                    const newCheckInDate = moment(currentGuest.check_in);
+                    // define v
+                    var v = 0;
 
-                    // define new check out date
-                    const newCheckOutDate = moment(currentGuest.check_out);
-
-                    // define new cart item check in date
-                    // const newCartItemCheckInDate = moment(item.checkIn);
-
-                    // define new cart item check out date
-                    // const newCartItemCheckOutDate = moment(item.checkOut).subtract(1, "days");
+                    // define error points
+                    var errorPoints = 0;
                     
-                    // add days between current guest check-in and check-out date to days in current guest booking array
-                    while(newCheckInDate.isBefore(newCheckOutDate)){
-                        daysInCurrentGuestBookings.push(newCheckInDate.format("MMM DD"));
-                        newCheckInDate.add(1, "day");
-                    };
+                    // auth check for check-in and check-out dates
+                    while(v < filteredBookings.length){
+                    
+                        // current guest
+                        const currentGuest = booking_count.filter((doc)=>{return(doc._id == filteredBookings[v]._id)})[0];
 
-                    // add days between cart item check-in and check-out date to days in cart item booking array
-                    // while(newCartItemCheckInDate.isBefore(newCartItemCheckOutDate)){
-                    //     daysInCurrentGuestBookings.push(newCartItemCheckInDate.format("MMM DD"));
-                    //     newCartItemCheckInDate.add(1, "day");
-                    // };
+                        // define days array to contain the days between current guest check-in and check-out date
+                        const daysInCurrentGuestBookings = [];
 
-                    // const cartItemDaysValid = daysInCartItemBookings.forEach((cartItemDay)=>{
-                    //     console.log(cartItemDay);
-                    //     // if(daysInCurrentGuestBookings.includes(cartItemDay)){
-                    //     //     console.log("included");
-                    //     // };
-                    // });
+                        // define days array to contain the days between cart item booking check-in and check-out date
+                        // const daysInCartItemBookings = [];
+                        
+                        // define new check in date
+                        const newCheckInDate = moment(currentGuest.check_in);
 
-                    // if both cart item check-in and check-out date is not included in current guest booking array
-                    if(!daysInCurrentGuestBookings.includes(checkIn.format("MMM DD")) && !daysInCurrentGuestBookings.includes(checkOut.format("MMM DD"))){
+                        // define new check out date
+                        const newCheckOutDate = moment(currentGuest.check_out);
 
-                        // make sure date is valid
-                        if(checkIn.format("MMM DD YYYY") == currentDate.format("MMM DD YYYY") || checkIn.isAfter(currentDate)){
+                        // define new cart item check in date
+                        // const newCartItemCheckInDate = moment(item.checkIn);
 
-                            // move on to next guest in room
-                            v++;
-
-                        }else{
-                            // move on to next guest in room
-                            v++;
-
-                            // increase error points by one
-                            errorPoints++;
+                        // define new cart item check out date
+                        // const newCartItemCheckOutDate = moment(item.checkOut).subtract(1, "days");
+                        
+                        // add days between current guest check-in and check-out date to days in current guest booking array
+                        while(newCheckInDate.isBefore(newCheckOutDate)){
+                            daysInCurrentGuestBookings.push(newCheckInDate.format("MMM DD"));
+                            newCheckInDate.add(1, "day");
                         };
 
-                    }else{
+                        // add days between cart item check-in and check-out date to days in cart item booking array
+                        // while(newCartItemCheckInDate.isBefore(newCartItemCheckOutDate)){
+                        //     daysInCurrentGuestBookings.push(newCartItemCheckInDate.format("MMM DD"));
+                        //     newCartItemCheckInDate.add(1, "day");
+                        // };
 
-                        // if days are included, increase error points by one
-                        errorPoints++;
+                        // const cartItemDaysValid = daysInCartItemBookings.forEach((cartItemDay)=>{
+                        //     console.log(cartItemDay);
+                        //     // if(daysInCurrentGuestBookings.includes(cartItemDay)){
+                        //     //     console.log("included");
+                        //     // };
+                        // });
 
-                        // move on to next guest in room
-                        v++;
+                        // if both cart item check-in and check-out date is not included in current guest booking array
+                        if(!daysInCurrentGuestBookings.includes(checkIn.format("MMM DD")) && !daysInCurrentGuestBookings.includes(checkOut.format("MMM DD"))){
+
+                            // make sure date is valid
+                            if(checkIn.format("MMM DD YYYY") == currentDate.format("MMM DD YYYY") || checkIn.isAfter(currentDate)){
+
+                                // move on to next guest in room
+                                v++;
+
+                            }else{
+                                // move on to next guest in room
+                                v++;
+
+                                // increase error points by one
+                                errorPoints++;
+                            };
+
+                        }else{
+
+                            // if days are included, increase error points by one
+                            errorPoints++;
+
+                            // move on to next guest in room
+                            v++;
+
+                        };
+
+                    };
+
+
+                    // if the loops for our comparison for our check_in and check_out dates has been completed and there is no error
+                    if(v == filteredBookings.length && errorPoints == 0){
+
+                        // extract cart item properties
+                        const { _id, roomId, persons, checkIn, checkOut, specialServices } = cart[i];
+
+                        // define new cart item
+                        const newCartItem = { _id, roomId, persons, checkIn, checkOut, specialServices, isValid: true };
+
+                        // push new cart item to new cart
+                        newCart.push(newCartItem);
+
+                        // move on to next item in cart
+                        i++;
+
+                    }else if(v == filteredBookings.length && errorPoints > 0){
+                        
+                        // extract cart item properties
+                        const { _id, roomId, persons, checkIn, checkOut, specialServices } = cart[i];
+
+                        // define new cart item
+                        const newCartItem = { _id, roomId, persons, checkIn, checkOut, specialServices, isValid: false };
+
+                        // push new cart item to new cart
+                        newCart.push(newCartItem);
+
+                        // if error was found, increase is valid error points by one
+                        isValidErrorPoints++;
+
+                        // move on to next item in cart
+                        i++;
 
                     };
 
                 };
 
+            }else if(booked === false){
+                // if the room isn't booked at all, move on to next item in cart
+                // in this case, there would be no current guest
 
-                // if the loops for our comparison for our check_in and check_out dates has been completed and there is no error
-                if(v == filteredBookings.length && errorPoints == 0){
-
-                    // extract cart item properties
-                    const { _id, roomId, persons, checkIn, checkOut, specialServices } = cart[i];
+                // extract cart item properties
+                const { _id, roomId, persons, checkIn, checkOut, specialServices } = cart[i];
+                
+                // get check in date
+                const checkInDate = moment(checkIn);
+                
+                // make sure check in date is valid
+                if(checkInDate.format("MMM DD YYYY") == currentDate.format("MMM DD YYYY") || checkInDate.isAfter(currentDate)){
 
                     // define new cart item
                     const newCartItem = { _id, roomId, persons, checkIn, checkOut, specialServices, isValid: true };
@@ -2655,13 +2706,10 @@ const isValidBookingDates = async(cart)=>{
                     // push new cart item to new cart
                     newCart.push(newCartItem);
 
-                    // move on to next item in cart
+                    // move on to next cart item
                     i++;
 
-                }else if(v == filteredBookings.length && errorPoints > 0){
-                    
-                    // extract cart item properties
-                    const { _id, roomId, persons, checkIn, checkOut, specialServices } = cart[i];
+                }else{
 
                     // define new cart item
                     const newCartItem = { _id, roomId, persons, checkIn, checkOut, specialServices, isValid: false };
@@ -2669,54 +2717,19 @@ const isValidBookingDates = async(cart)=>{
                     // push new cart item to new cart
                     newCart.push(newCartItem);
 
-                    // if error was found, increase is valid error points by one
+                    // increase is valid error points by 1
                     isValidErrorPoints++;
 
-                    // move on to next item in cart
+                    // move on to next cart item
                     i++;
 
                 };
 
             };
 
-        }else if(booked === false){
-            // if the room isn't booked at all, move on to next item in cart
-            // in this case, there would be no current guest
-
-            // extract cart item properties
-            const { _id, roomId, persons, checkIn, checkOut, specialServices } = cart[i];
-            
-            // get check in date
-            const checkInDate = moment(checkIn);
-            
-            // make sure check in date is valid
-            if(checkInDate.format("MMM DD YYYY") == currentDate.format("MMM DD YYYY") || checkInDate.isAfter(currentDate)){
-
-                // define new cart item
-                const newCartItem = { _id, roomId, persons, checkIn, checkOut, specialServices, isValid: true };
-
-                // push new cart item to new cart
-                newCart.push(newCartItem);
-
-                // move on to next cart item
-                i++;
-
-            }else{
-
-                // define new cart item
-                const newCartItem = { _id, roomId, persons, checkIn, checkOut, specialServices, isValid: false };
-
-                // push new cart item to new cart
-                newCart.push(newCartItem);
-
-                // increase is valid error points by 1
-                isValidErrorPoints++;
-
-                // move on to next cart item
-                i++;
-
-            };
-
+        }else{
+            // move on to next
+            i++;
         };
     };
 
@@ -2742,6 +2755,63 @@ const isValidBookingDates = async(cart)=>{
     // return is valid dates
     return { isValid: isValidDates, newCart, loopCompleted };
 };
+
+// user cart
+app.get("/import_my_cart/:id", async(req, res)=>{
+
+    // extract user id
+    const { id } = req.params;
+
+    try{
+        const newCartArray = [];
+
+        // import cart
+        const { cart } = await User.findOne({_id: new ObjectId(id)});
+
+        // process cart for is valid
+        const { newCart, loopCompleted } = await isValidBookingDates(cart);
+
+        // define i
+        var i = 0;
+        
+        // if new cart exist
+        if(newCart && loopCompleted == true){
+
+            // process new cart
+            while(i < newCart.length){
+
+                // define cart item
+                const cartItem = newCart[i];
+                
+                // extract cart props
+                const { roomId, checkIn, checkOut, persons, specialServices, isValid } = cartItem;
+                
+                // find name image and price
+                const { name, images, price } = await Room.findOne({_id: new ObjectId(roomId)});
+                
+                // extract first image
+                const image = images[0];
+
+                // define new cart item
+                const newCartItem = {name, image, roomId, checkIn, checkOut, persons, specialServices, price, isValid};
+                
+                // push new cart item to new cart array
+                newCartArray.push(newCartItem);
+
+                // move on to next cart item
+                i++;
+            };
+        };
+
+        // send response
+        res.status(200).json({message: "All okay", cart: newCartArray});
+
+    }catch(err){
+        console.log("error", err);
+
+        res.status(400).json({error: err.message});
+    };
+});
 
 // create pre_transaction data
 const createPreTransactionData = async(name, email, address, phone_number, state, country, rooms)=>{
@@ -4812,61 +4882,6 @@ const repayFailedTransaction = async(email, original_reference, amount)=>{
     });
 };
 
-
-
-// user api
-app.get("/import_my_cart/:id", async(req, res)=>{
-
-    // extract user id
-    const { id } = req.params;
-
-    try{
-        const newCartArray = [];
-
-        const { cart } = await User.findOne({_id: new ObjectId(id)});
-
-        // process cart for is valid
-        const { newCart, loopCompleted } = await isValidBookingDates(cart);
-
-        // define i
-        var i = 0;
-        
-        // if new cart exist
-        if(newCart && loopCompleted == true){
-
-            // process new cart
-            while(i < newCart.length){
-
-                // define cart item
-                const cartItem = newCart[i];
-                
-                // extract cart props
-                const { roomId, checkIn, checkOut, persons, specialServices, isValid } = cartItem;
-                
-                // find name image and price
-                const { name, images, price } = await Room.findOne({_id: new ObjectId(roomId)});
-                
-                // extract first image
-                const image = images[0];
-
-                // define new cart item
-                const newCartItem = {name, image, roomId, checkIn, checkOut, persons, specialServices, price, isValid};
-                
-                // push new cart item to new cart array
-                newCartArray.push(newCartItem);
-
-                // move on to next cart item
-                i++;
-            };
-        };
-
-        res.status(200).json({message: "All okay", cart: newCartArray});
-    }catch(err){
-        console.log("error", err);
-
-        res.status(400).json({error: "Could not import cart"});
-    };
-});
 // end of user api
 
 
@@ -8271,7 +8286,7 @@ function percentageComparison(firstNumber, secondNumber){
 };
 
 // process chart data
-const processData = async()=>{
+const processChartData = async()=>{
 
     const todaysDate = moment().toISOString();
     const todaysDateUnformatted = moment();
@@ -8334,9 +8349,9 @@ const processData = async()=>{
     const diff = moment(todaysDate).diff(moment(bookings[bookings.length - 1].date), "days") > 0 ? moment(todaysDate).diff(moment(bookings[bookings.length - 1].date), "days") : 0;
 
     // find booking first and last date
-    if(diff > 7){
+    if(diff > 6){
 
-        console.log("greater than seven");
+        // console.log("greater than seven");
 
         // 
         currentDate = todaysDate;
@@ -8346,14 +8361,13 @@ const processData = async()=>{
 
     }else if(diff < 7 && bookings.length != 0){
 
-        console.log("less than 7 and greater than zero")
+        // console.log("less than 7 and greater than zero")
 
         // 
-        const newSubtractionNumber = 6 - diff;
-
+        const newSubtractionNumber = 5 - diff;
 
         // 
-        currentDate = bookings[0].date;
+        currentDate = todaysDate;
 
         // 
         const newLastDate = moment(bookings[bookings.length - 1].date).subtract(newSubtractionNumber, "days");
@@ -8364,7 +8378,7 @@ const processData = async()=>{
 
     }else if(bookings.length == 0){
 
-        console.log("zero length");
+        // console.log("zero length");
 
         // 
         currentDate = todaysDate;
@@ -8465,6 +8479,8 @@ const processData = async()=>{
 
 
 
+    // console.log("dates", todaysDateUnformatted.clone().format("MMM DD YYYY"), prevDateUnformatted.clone().format("MMM DD YYYY"))
+    // console.log("data", moment().format("MMM DD YYYY"), yesterdaysData, todaysData, chartData);
 
     // statistics box data calc
     const weeklyEarnings = percentageComparison(previousWeekData.amount, currentWeekData.amount);
@@ -8487,7 +8503,6 @@ const processData = async()=>{
     return({newStatisticsBoxData, chartData});
 
 };
-
 
 // import admin dashboard data
 app.post("/import_admin_dashboard_data", async(req, res)=>{
@@ -8562,7 +8577,7 @@ app.post("/import_admin_dashboard_data", async(req, res)=>{
         const newReceipts = await processReceipt(receipts);
 
         // process chart data
-        const { newStatisticsBoxData, chartData } = await processData();
+        const { newStatisticsBoxData, chartData } = await processChartData();
 
         res.status(200).json({message: "Import succesfull", admin, users: users.reverse().slice(0, 3), bookings: newBookings.slice(0, 3), transactions: newTransactions.slice(0, 3), receipts: newReceipts.slice(0, 3), chartData: chartData, newStatisticsBoxData: newStatisticsBoxData, totalUsers: users.length});
     }catch(err){
@@ -11187,6 +11202,21 @@ app.get("/add_booking_count", async(req, res)=>{
     }catch(err){
         console.log(err.message, err);
         res.status(400).json({error: "error"});
+    };
+});
+
+
+// test process chartData
+app.get("/process_chart_data", async(req, res)=>{
+    try{
+        const { chartData } = await processChartData();
+
+        console.log("chart data", chartData.length, chartData);
+
+        res.status(200).json({message: "All okay"});
+    }catch(err){
+        console.log(err);
+        res.status(400).json({error: err.message});
     };
 });
 
