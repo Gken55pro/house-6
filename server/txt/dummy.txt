@@ -27,3 +27,67 @@ if(!err){
             });
         };
     });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    if(firstNumber !==0 && secondNumber !== 0){
+        // get one percent by dividing first number by 100
+        const onePercent = firstNumber/100;
+        // get prev percentage by by multiplying it by one percent
+        const prevPercentage = onePercent * firstNumber;
+        // get current percentage by dividing second number by one percent
+        const currentPercentage = secondNumber/onePercent;
+
+        if(currentPercentage > prevPercentage){
+
+            // if current percentage is greater than prev percentage, we subtract 100% percent from it
+            const difference = Number((currentPercentage - 100).toFixed(2));
+            return({increase: true, percentage: difference});
+
+        }else if(currentPercentage < prevPercentage){
+
+            // if current percentage is lesser than prev percentage, we subtract it percent from 100% since it is not up to
+            const difference = Number((100 - currentPercentage).toFixed(2));
+            return({increase: false, percentage: difference});
+
+        };
+    }else if(firstNumber !== 0 && secondNumber === 0){
+        return({increase: false, percentage: -100});
+    }else if(firstNumber === 0 && secondNumber !== 0){
+        return({increase: true, percentage: 100});
+    }else if(firstNumber === 0 && secondNumber === 0){
+        return({increase: false, percentage: 0});
+    };

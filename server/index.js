@@ -8,7 +8,10 @@ const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
 const bycrpt = require("bcrypt");
 const nodeMailer = require("nodemailer");
-const moment = require("moment");
+
+// define moment time
+const momentTime = require("moment-timezone");
+const moment = momentTime;
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -41,8 +44,7 @@ const WebReview = require("./models/web_reviews");
 const FAQ = require("./models/FAQ.js");
 const PendingReceipt = require("./models/pending_receipt.js");
 const FlaggedDown = require("./models/flagged_down_transaction.js");
-const e = require("express");
-const { difference } = require("lodash");
+
 
 
 
@@ -90,6 +92,12 @@ connectToDb();
 app.get("/", (req, res)=>{
     res.status(200).json({status: "Okay"})
 });
+
+
+// const timeOne = momentTime().tz("America/New_York"); 
+// const timeTwo = momentTime().tz("Africa/lagos"); 
+
+// console.log("moment", timeOne.format("HH:mm:ss"), "moment_2", timeTwo.format("HH:mm:ss"));
 
 
 
@@ -297,6 +305,9 @@ function HandleError(err, duplicateError){
 // create user
 const createUser = async(request, response)=>{
 
+    // define current date
+    const currentDate = moment().toISOString();
+
     // destructure request body
     const { name, email, password } = request.body;
 
@@ -309,7 +320,7 @@ const createUser = async(request, response)=>{
     try{
 
         // create user and extract _id
-        const { _id } = await User.create({name, email, password, image: "no_image.png", address: "No address", state: "No state", country: "No country", phoneNumber: "No phone number",  wishList: [], cart: [], bookings: [], pendingCart: [], transactions: [], receipts: [], messages: [], dateOfCreation: `${new Date}`, terms: true});
+        const { _id } = await User.create({name, email, password, image: "no_image.png", address: "No address", state: "No state", country: "No country", phoneNumber: "No phone number",  wishList: [], cart: [], bookings: [], pendingCart: [], transactions: [], receipts: [], messages: [], dateOfCreation: currentDate, terms: true});
 
         // create json web token using _id
         const { Token } = await createToken(_id);
@@ -1318,8 +1329,8 @@ const RoomGuard = async()=>{
             // current guest
             const currentGuest = booking_count.filter((guest)=>{return(guest._id === _id)})[0];
 
-            const checkInDate = moment(currentGuest.check_in);
-            const checkOutDate = moment(currentGuest.check_out);
+            const checkInDate = moment(currentGuest.check_in).tz("Africa/lagos");
+            const checkOutDate = moment(currentGuest.check_out).tz("Africa/lagos");
 
             // check for current guest admin booking status
             const currentGuestAdminBooking = await AdminBooking.findOne({ roomId: room._id, userId: currentGuest.user_id, checkIn: currentGuest.check_in, checkOut: currentGuest.check_out});
@@ -1531,18 +1542,12 @@ app.get("/home", async(req, res)=>{
         const newWebReviews = [];
 
         // find rooms
-        await Room.find({}, ((err, data)=>{
-            if(!err){
-                data.forEach((doc)=>{rooms.push(doc)});
-            };
-        }));
+        const foundDocsRooms = await Room.find({});
+        foundDocsRooms.forEach((doc)=>{rooms.push(doc)});
 
         // find web reviews
-        await WebReview.find({hidden: false}, ((err, data)=>{
-            if(!err){
-                data.forEach((doc)=>{webReviews.push(doc)});
-            };
-        }));
+        const foundDocsWebReviews = await WebReview.find({hidden: false});
+        foundDocsWebReviews.forEach((doc)=>{webReviews.push(doc)});
 
         // define i
         var i = 0;
@@ -1661,18 +1666,13 @@ app.get("/import_room_list", async(req, res)=>{
         const keywordsArray = [];
 
         // find rooms
-        await Room.find({}, (err, data)=>{
-            if(!err){
-                data.forEach((doc)=>{
-                    // update preData array
-                    preData.push(doc);
+        const foundDocs = await Room.find({});
+        foundDocs.forEach((doc)=>{
+            // update preData array
+            preData.push(doc);
 
-                    // update keywords array
-                    keywordsArray.push(doc.name);
-
-                    // console.log(doc._id)
-                });
-            };
+            // update keywords array
+            keywordsArray.push(doc.name);
         });
 
         
@@ -2315,19 +2315,19 @@ app.post("/add_to_cart/:id", async(req, res)=>{
     const { userId, persons, specialServices } = req.body;
 
     // define current time
-    const currentTime = moment();
+    const currentTime = moment().tz("Africa/lagos");
 
     // define date
-    const date = moment(req.body.checkIn); 
+    const date = moment(req.body.checkIn).tz("Africa/lagos"); 
 
     // define updated date
     const updatedDate = date.hour(currentTime.hour()).minute(currentTime.minute()).second(currentTime.second());
 
     // define new date
-    const newDate = moment(updatedDate);
+    const newDate = moment(updatedDate).tz("Africa/lagos");
 
     // define difference in days
-    const differenceInDays = moment(req.body.checkOut).startOf("day").diff(newDate.clone().startOf("day"), "days");
+    const differenceInDays = moment(req.body.checkOut).tz("Africa/lagos").startOf("day").diff(newDate.clone().startOf("day"), "days");
 
     // define check out date
     const newCheckOutDate = newDate.clone().add(differenceInDays, "days");
@@ -2409,11 +2409,14 @@ app.post("/add_to_wishlist/:id", async(req, res)=>{
         // add room to user's wishlist
         await User.updateOne({_id: new ObjectId(userId)}, {$push: {wishList: {roomId: id}}});
 
+        console.log("id", id);
+
         // extract new updated wishlist
         const { wishList } = await User.findOne({_id: new ObjectId(userId)});
 
         res.status(200).json({message: "Added to wishlist successfully", wishList});
-    }catch{
+    }catch(err){
+        console.log(err);
         res.status(400).json({error: "Could not add to wishlist"});
     };
 });
@@ -2433,7 +2436,8 @@ app.post("/remove_from_wishlist/:id", async(req, res)=>{
         const { wishList } = await User.findOne({_id: new ObjectId(userId)});
 
         res.status(200).json({message: "Removed from wishlist", wishList});
-    }catch{
+    }catch(err){
+        console.log(err);
         res.status(400).json({error: "Could not remove from wishlist"});
     };
 });
@@ -5825,74 +5829,82 @@ app.post("/account_revoke_cancel_bookings", async(req, res)=>{
             const bookingId = array[i];
 
             // find admin booking by user booking id
-            const adminBooking = await AdminBooking.findOne({userBookingId: bookingId});
+            const adminBooking = await AdminBooking.findOne({userBookingId: bookingId, status: "cancel request"});
 
-            // push to included bookings
-            includedBookings.push(adminBooking);
+            // check for admin booking
+            if(adminBooking){
 
-            // find admin transaction with that date and extract the reference
-            const { reference } = await AdminTransaction.findOne({date: adminBooking.date});
+                // push to included bookings
+                includedBookings.push(adminBooking);
 
-            // define found refund request
-            const foundRefundRequests = [];
+                // find admin transaction with that date and extract the reference
+                const { reference } = await AdminTransaction.findOne({date: adminBooking.date});
 
-            // find all refund requests with that reference
-            await AdminRefundRequest.find({reference: reference}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{
-                        const { preTransactionRooms } = doc;
-                        
-                        preTransactionRooms.forEach((room)=>{
-                            foundRefundRequests.push(room);
+                // define found refund request
+                const foundRefundRequests = [];
+
+                // find all refund requests with that reference
+                await AdminRefundRequest.find({reference: reference}, (err, data)=>{
+                    if(!err){
+                        data.forEach((doc)=>{
+                            const { preTransactionRooms } = doc;
+                            
+                            preTransactionRooms.forEach((room)=>{
+                                foundRefundRequests.push(room);
+                            });
                         });
-                    });
+                    };
+                });
+
+                // define p
+                var p = 0;
+
+                // start loop for p
+                while(p < foundRefundRequests.length){
+
+                    // extract props
+                    const { roomId, checkIn, checkOut } = foundRefundRequests[p];
+
+                    // find admin booking
+                    const foundAdminBooking = await AdminBooking.findOne({roomId: roomId, checkIn: checkIn, checkOut: checkOut});
+
+                    // define isIncluded
+                    const isIncluded = roomIncluded.filter((doc)=>{return(doc.roomId == roomId && doc.checkIn == checkIn && doc.checkOut == checkOut)})[0];
+
+                    // define isIncluded array
+                    const isIncludedArray = includedBookings.filter((doc)=>{return(doc.roomId == roomId && doc.checkIn == checkIn && doc.checkOut == checkOut)})[0];
+
+                    // if booking was selected
+                    if(!isIncluded && isIncludedArray){
+
+                        // push booking to admin booking
+                        roomIncluded.push(foundAdminBooking);
+
+                        // push booking to admin booking
+                        adminBookings.push(foundAdminBooking);
+
+                        // move on to next
+                        p++;
+
+                    }else{
+
+                        // move on to next
+                        p++;
+                    };
+
                 };
-            });
 
-            // define p
-            var p = 0;
-
-            // start loop for p
-            while(p < foundRefundRequests.length){
-
-                // extract props
-                const { roomId, checkIn, checkOut } = foundRefundRequests[p];
-
-                // find admin booking
-                const foundAdminBooking = await AdminBooking.findOne({roomId: roomId, checkIn: checkIn, checkOut: checkOut});
-
-                // define isIncluded
-                const isIncluded = roomIncluded.filter((doc)=>{return(doc.roomId == roomId && doc.checkIn == checkIn && doc.checkOut == checkOut)})[0];
-
-                // define isIncluded array
-                const isIncludedArray = includedBookings.filter((doc)=>{return(doc.roomId == roomId && doc.checkIn == checkIn && doc.checkOut == checkOut)})[0];
-
-                // if booking was selected
-                if(!isIncluded && isIncludedArray){
-
-                    // push booking to admin booking
-                    roomIncluded.push(foundAdminBooking);
-
-                    // push booking to admin booking
-                    adminBookings.push(foundAdminBooking);
+                // if loop for p is complete
+                if(p == foundRefundRequests.length){
 
                     // move on to next
-                    p++;
+                    i++;
 
-                }else{
-
-                    // move on to next
-                    p++;
                 };
 
-            };
-
-            // if loop for p is complete
-            if(p == foundRefundRequests.length){
-
+            }else{
                 // move on to next
                 i++;
-
             };
 
         };
@@ -6077,49 +6089,60 @@ app.post("/account_cancel_refund_requests", async(req, res)=>{
             const id = array[x];
 
             // find receipt id
-            const { reference } = await AdminTransaction.findOne({userTransactionId: new ObjectId(id), status: "Refund request"});
+            const foundAdminTransaction = await AdminTransaction.findOne({userTransactionId: new ObjectId(id), status: "Refund request"});
 
-            // define found refund request
-            const foundRefundRequests = [];
+            // check transaction status
+            if(foundAdminTransaction){
 
-            // find all refund requests with that reference
-            await AdminRefundRequest.find({reference: reference, status: "Refund request", processing: false}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{
-                        const { preTransactionRooms } = doc;
-                        
-                        preTransactionRooms.forEach((room)=>{
-                            foundRefundRequests.push(room);
+                // extract reference
+                const { reference } = foundAdminTransaction;
+
+                // define found refund request
+                const foundRefundRequests = [];
+
+                // find all refund requests with that reference
+                await AdminRefundRequest.find({reference: reference, status: "Refund request", processing: false}, (err, data)=>{
+                    if(!err){
+                        data.forEach((doc)=>{
+                            const { preTransactionRooms } = doc;
+                            
+                            preTransactionRooms.forEach((room)=>{
+                                foundRefundRequests.push(room);
+                            });
                         });
-                    });
+                    };
+                });
+
+                // define p
+                var p = 0;
+
+                // start loop for p
+                while(p < foundRefundRequests.length){
+
+                    // extract props
+                    const { roomId, checkIn, checkOut } = foundRefundRequests[p];
+
+                    // find admin booking
+                    const foundAdminBooking = await AdminBooking.findOne({roomId: roomId, checkIn: checkIn, checkOut: checkOut});
+
+                    // push booking to admin booking
+                    adminBookings.push(foundAdminBooking);
+
+                    // move on to next
+                    p++;
                 };
-            });
 
-            // define p
-            var p = 0;
+                // if loop for p is complete
+                if(p == foundRefundRequests.length){
 
-            // start loop for p
-            while(p < foundRefundRequests.length){
+                    // move on to next
+                    x++;
 
-                // extract props
-                const { roomId, checkIn, checkOut } = foundRefundRequests[p];
+                };
 
-                // find admin booking
-                const foundAdminBooking = await AdminBooking.findOne({roomId: roomId, checkIn: checkIn, checkOut: checkOut});
-
-                // push booking to admin booking
-                adminBookings.push(foundAdminBooking);
-
-                // move on to next
-                p++;
-            };
-
-            // if loop for p is complete
-            if(p == foundRefundRequests.length){
-
-                // move on to next
+            }else{
+                // move on
                 x++;
-
             };
 
         };
@@ -6143,7 +6166,7 @@ app.post("/account_cancel_refund_requests", async(req, res)=>{
         console.log(err);
 
         // send error response
-        res.status(400).json({error: "Could not revoke cancel booking"});
+        res.status(400).json({error: "Cancel request failed"});
     };
 });
 // ///////////////////////////////////////////////////////////////////////////
@@ -7312,12 +7335,9 @@ app.get("/frequently_asked_questions", async(req, res)=>{
         const array = [];
 
         // find FAQ
-        await FAQ.find({}, (err, data)=>{
-            if(!err){
-                data.forEach((doc)=>{
-                    array.push(doc);
-                });
-            };
+        const foundDocs = await FAQ.find({});
+        foundDocs.forEach((doc)=>{
+            array.push(doc);
         });
         
         // send response
@@ -7381,12 +7401,9 @@ app.post("/web_reviews", async(req, res)=>{
         const newArray = [];
 
         // find web reviews
-        await WebReview.find({}, (err, data)=>{
-            if(!err){
-                data.forEach((doc)=>{
-                    array.push(doc);
-                });
-            };
+        const foundDocs = await WebReview.find({});
+        foundDocs.forEach((doc)=>{
+            array.push(doc);
         });
 
         // find all web review user image
@@ -7712,11 +7729,20 @@ const activityArrayAdmin = async()=>{
     const messages = [];
 
 
-    await AdminBooking.find({}, (err, data)=>{if(!err){data.forEach(doc =>{ if(doc.seen == false){ bookings.push(doc) } })}});
-    await AdminTransaction.find({}, (err, data)=>{if(!err){data.forEach(doc =>{ if(doc.seen == false){ transactions.push(doc) } })}});
-    await AdminRefundRequest.find({}, (err, data)=>{if(!err){data.forEach(doc =>{ if(doc.seen == false){ refundRequests.push(doc) } })}});
-    await AdminReceipt.find({}, (err, data)=>{if(!err){data.forEach(doc =>{ if(doc.seen == false){ receipts.push(doc) } })}});
-    await Message.find({}, (err, data)=>{if(!err){data.forEach(doc =>{ if(doc.seen == false){ messages.push(doc) } })}});
+    const foundDocsBookings = await AdminBooking.find({});
+    foundDocsBookings.forEach(doc =>{ if(doc.seen == false){bookings.push(doc)}});
+
+    const foundDocsTransactions = await AdminTransaction.find({});
+    foundDocsTransactions.forEach(doc =>{ if(doc.seen == false){ transactions.push(doc)}})
+
+    const foundDocsAdminRefundRequests = await AdminRefundRequest.find({});
+    foundDocsAdminRefundRequests.forEach(doc =>{ if(doc.seen == false){refundRequests.push(doc)}})
+
+    const foundDocsReceipts = await AdminReceipt.find({});
+    foundDocsReceipts.forEach(doc =>{ if(doc.seen == false){receipts.push(doc)}})
+
+    const foundDocsMessages = await Message.find({});
+    foundDocsMessages.forEach(doc =>{ if(doc.seen == false){messages.push(doc)}})
     
 
     if(bookings.length > 0){
@@ -8253,35 +8279,27 @@ function createYearlyCustomerData(years, users){
 };
 
 // percentage comparison
-function percentageComparison(firstNumber, secondNumber){
-         
-    if(firstNumber !==0 && secondNumber !== 0){
-        // get one percent by dividing first number by 100
-        const onePercent = firstNumber/100;
-        // get prev percentage by by multiplying it by one percent
-        const prevPercentage = onePercent * firstNumber;
-        // get current percentage by dividing second number by one percent
-        const currentPercentage = secondNumber/onePercent;
+function percentageComparison(previousData, currenData){
 
-        if(currentPercentage > prevPercentage){
+    if(previousData == 0 && currenData != 0){
 
-            // if current percentage is greater than prev percentage, we subtract 100% percent from it
-            const difference = Number((currentPercentage - 100).toFixed(2));
-            return({increase: true, percentage: difference});
+        // return
+        return({percentage: 100, increase: true});
+    }else{
+        // second number is current data, first number is previous data
+        const calc = (currenData - previousData)/previousData;
 
-        }else if(currentPercentage < prevPercentage){
+        // percentage
+        const percentage = calc * 100;
 
-            // if current percentage is lesser than prev percentage, we subtract it percent from 100% since it is not up to
-            const difference = Number((100 - currentPercentage).toFixed(2));
-            return({increase: false, percentage: difference});
+        // percentage value
+        const percentageValue = !Number.isNaN(percentage)?percentage.toFixed(2):0;
 
-        };
-    }else if(firstNumber !== 0 && secondNumber === 0){
-        return({increase: false, percentage: -100});
-    }else if(firstNumber === 0 && secondNumber !== 0){
-        return({increase: true, percentage: 100});
-    }else if(firstNumber === 0 && secondNumber === 0){
-        return({increase: false, percentage: 0});
+        // increase
+        const increase = percentageValue < 1?false:true;
+
+        // return
+        return({percentage: percentageValue, increase: increase});
     };
 };
 
@@ -8348,10 +8366,12 @@ const processChartData = async()=>{
     // define difference
     const diff = moment(todaysDate).diff(moment(bookings[bookings.length - 1].date), "days") > 0 ? moment(todaysDate).diff(moment(bookings[bookings.length - 1].date), "days") : 0;
 
+    // console.log("diff", diff);
+
     // find booking first and last date
     if(diff > 6){
 
-        // console.log("greater than seven");
+        console.log("greater than seven");
 
         // 
         currentDate = todaysDate;
@@ -8361,7 +8381,7 @@ const processChartData = async()=>{
 
     }else if(diff < 7 && bookings.length != 0){
 
-        // console.log("less than 7 and greater than zero")
+        console.log("less than 7 and greater than zero")
 
         // 
         const newSubtractionNumber = 5 - diff;
@@ -8370,7 +8390,11 @@ const processChartData = async()=>{
         currentDate = todaysDate;
 
         // 
-        const newLastDate = moment(bookings[bookings.length - 1].date).subtract(newSubtractionNumber, "days");
+        const newLastDate = moment(bookings[bookings.length - 1].date).subtract((newSubtractionNumber <0?1:newSubtractionNumber), "days");
+
+        // newSubtractionNumber
+
+        // console.log("last date", newLastDate, newSubtractionNumber);
 
         // 
         lastDate = newLastDate.toISOString();
@@ -8529,42 +8553,29 @@ app.post("/import_admin_dashboard_data", async(req, res)=>{
         const receipts = [];
 
         // create chart data
-        await AdminBooking.find({}, (err, data)=>{
-            if(!err){
-                data.forEach((doc)=>{
-                    if(doc.status != "canceled"){
-                        const { date, roomId, userId, } = doc;
-                        bookings.push(doc);
-                    };
-                });
+        const foundDocsBookings = await AdminBooking.find({});
+        foundDocsBookings.forEach((doc)=>{
+            if(doc.status != "canceled"){
+                bookings.push(doc);
             };
         });
 
         // find users
-        await User.find({}, (err, data)=>{
-            if(!err){
-                data.reverse().forEach((doc)=>{
-                    users.push(doc);
-                });
-            };
+        const foundDocsUsers = await User.find({});
+        foundDocsUsers.reverse().forEach((doc)=>{
+            users.push(doc);
         });
 
         // find admin transactions
-        await AdminTransaction.find({}, (err, data)=>{
-            if(!err){
-                data.forEach((doc)=>{
-                    transactions.push(doc);
-                });
-            };
+        const foundDocsTransactions = await AdminTransaction.find({});
+        foundDocsTransactions.forEach((doc)=>{
+            transactions.push(doc);
         });
 
         // find admin receipts
-        await AdminReceipt.find({}, (err, data)=>{
-            if(!err){
-                data.forEach((doc)=>{
-                    receipts.push(doc);
-                });
-            };
+        const foundDocsReceipts = await AdminReceipt.find({});
+        foundDocsReceipts.forEach((doc)=>{
+            receipts.push(doc);
         });
 
         // process bookings
@@ -8751,49 +8762,44 @@ app.get("/admin_import_rooms", async(req, res)=>{
 
         // find docs
         if(filter == "Top rooms"){
-             await Room.find({}, (err, data)=>{
-                if(!err){
-                    const newData = [];
 
-                    data.forEach((doc)=>{ 
-                        newData.push(doc);
-                    });
+            const newData = [];
+            const foundDocs = await Room.find({});
 
-                    newData
-                    .sort((a, b)=> b.booking_count.length - a.booking_count.length)
-                    .forEach((doc)=>{
-                        array.push(doc);
-                    })
-                };
-            }); 
+            foundDocs.forEach((doc)=>{ 
+                newData.push(doc);
+            });
+
+            newData.sort((a, b)=> b.booking_count.length - a.booking_count.length)
+            .forEach((doc)=>{
+                array.push(doc);
+            })
+
         }else if(filter == "Booked rooms"){
-            await Room.find({}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{ 
-                        if(filter == "Booked rooms"){
-                            if(doc.booked == true){
-                                array.push(doc);
-                            };
-                        };
-                    });
+
+            const foundDocs = await Room.find({});
+            foundDocs.forEach((doc)=>{ 
+                if(filter == "Booked rooms"){
+                    if(doc.booked == true){
+                        array.push(doc);
+                    };
                 };
             }); 
+
         }else if(filter == "Bookings"){
-            await AdminBooking.find({}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{ 
-                        array.push(doc);
-                    });
-                };
-            }); 
+
+            const foundDocs = await AdminBooking.find({}); 
+            foundDocs.forEach((doc)=>{ 
+                array.push(doc);
+            });
+
         }else{
-            await Room.find({}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{ 
-                        array.push(doc);
-                    });
-                };
+
+            const foundDocs = await Room.find({});
+            foundDocs.forEach((doc)=>{ 
+                array.push(doc);
             }); 
+
         };
 
         // process array
@@ -9651,17 +9657,14 @@ app.get("/admin_import_users", async(req, res)=>{
         const keyWords = [];
 
         // find docs
-        await User.find({}, (err, data)=>{
-            if(!err){
-                data.reverse().forEach((doc)=>{
-                    if(filter == "New"){
-                        if(doc.seen == false){
-                            array.push(doc)
-                        };
-                    }else{
-                        array.push(doc);
-                    };
-                });
+        const foundDocs = await User.find({});
+        foundDocs.reverse().forEach((doc)=>{
+            if(filter == "New"){
+                if(doc.seen == false){
+                    array.push(doc)
+                };
+            }else{
+                array.push(doc);
             };
         });
 
@@ -9854,12 +9857,9 @@ app.get("/admin_import_admin_requests", async(req, res)=>{
         const array = [];
 
         // find docs
-        await AdminRequest.find({}, (err, data)=>{
-            if(!err){
-                data.forEach((doc)=>{
-                    array.push(doc);
-                });
-            };
+        const foundDocs = await AdminRequest.find({});
+        foundDocs.forEach((doc)=>{
+            array.push(doc);
         });
 
         // create new array
@@ -9894,20 +9894,14 @@ app.get("/admin_import_admins", async(req, res)=>{
 
         // find docs
         if(filter === "Admin requests"){
-            await AdminRequest.find({}, (err, data)=>{
-                if(!err){
-                    data.reverse().forEach((doc)=>{
-                        array.push(doc)
-                    });
-                };
+            const foundDocs = await AdminRequest.find({});
+            foundDocs.reverse().forEach((doc)=>{
+                array.push(doc)
             });
         }else{
-            await Admin.find({}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{
-                        array.push(doc)
-                    });
-                };
+            const foundDocs = await Admin.find({});
+            foundDocs.forEach((doc)=>{
+                array.push(doc)
             });
         };
 
@@ -10043,57 +10037,46 @@ app.get("/admin_import_transactions", async(req, res)=>{
         // find docs
         if(filter.toLowerCase() == "debtors"){
 
-            await AdminDebtor.find({}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{array.push(doc)});
-                };
-            });
+            const foundDocs = await AdminDebtor.find({});
+            foundDocs.forEach((doc)=>{array.push(doc)});
 
         }else if(filter.toLowerCase() == "refund request"){
 
-            await AdminRefundRequest.find({status: "Refund request", processing: false}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{array.push(doc)});
-                };
-            });
+            const foundDocs = await AdminRefundRequest.find({status: "Refund request", processing: false});
+            foundDocs.forEach((doc)=>{array.push(doc)});
         
         }else if(filter.toLowerCase() == "refund processing"){
 
-            await AdminRefundRequest.find({status: "Refund processing", processing: true}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{array.push(doc)});
-                };
-            });
+            const foundDocs = await AdminRefundRequest.find({status: "Refund processing", processing: true});
+            foundDocs.forEach((doc)=>{array.push(doc)});
         
         }else{
 
-            await AdminTransaction.find({}, (err, data)=>{
-                if(!err){
-                    data.reverse().forEach((doc)=>{
-                        if(filter.toLowerCase() == "success"){
-                            if(doc.status.toLowerCase() == "success"){
-                                array.push(doc)
-                            };
-                        }else if(filter.toLowerCase() == "pending"){
-                            if(doc.status.toLowerCase() == "pending"){
-                                array.push(doc)
-                            };
-                        }else if(filter.toLowerCase() == "failed"){
-                            if(doc.status.toLowerCase() == "failed"){
-                                array.push(doc)
-                            };
-                        }else if(filter.toLowerCase() == "refunded"){
-                            if(doc.status.toLowerCase() == "refunded"){
-                                array.push(doc)
-                            };
-                        }else if(filter.toLowerCase() == "refund failed"){
-                            if(doc.status.toLowerCase() == "refund failed"){
-                                array.push(doc)
-                            };
-                        }else{
-                            array.push(doc);
-                        };
-                    });
+            const foundDocs = await AdminTransaction.find({});
+
+            foundDocs.reverse().forEach((doc)=>{
+                if(filter.toLowerCase() == "success"){
+                    if(doc.status.toLowerCase() == "success"){
+                        array.push(doc)
+                    };
+                }else if(filter.toLowerCase() == "pending"){
+                    if(doc.status.toLowerCase() == "pending"){
+                        array.push(doc)
+                    };
+                }else if(filter.toLowerCase() == "failed"){
+                    if(doc.status.toLowerCase() == "failed"){
+                        array.push(doc)
+                    };
+                }else if(filter.toLowerCase() == "refunded"){
+                    if(doc.status.toLowerCase() == "refunded"){
+                        array.push(doc)
+                    };
+                }else if(filter.toLowerCase() == "refund failed"){
+                    if(doc.status.toLowerCase() == "refund failed"){
+                        array.push(doc)
+                    };
+                }else{
+                    array.push(doc);
                 };
             });
 
@@ -10581,17 +10564,16 @@ app.get("/admin_import_receipts", async(req, res)=>{
         const keyWords = [];
 
         // find docs
-        await AdminReceipt.find({}, (err, data)=>{
-            if(!err){
-                data.reverse().forEach((doc)=>{
-                    if(filter == "New"){
-                        if(doc.seen == false){
-                            array.push(doc)
-                        };
-                    }else{
-                        array.push(doc);
-                    };
-                });
+        const foundDocs = await AdminReceipt.find({});
+
+        // loop
+        foundDocs.reverse().forEach((doc)=>{
+            if(filter == "New"){
+                if(doc.seen == false){
+                    array.push(doc)
+                };
+            }else{
+                array.push(doc);
             };
         });
 
@@ -10805,25 +10787,23 @@ app.get("/admin_settings", async(req, res)=>{
         }else if(filter == "faq" || filter == "null"){
 
             // find FAQ
-            await FAQ.find({}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{
-                        array.push(doc);
-                        preNewArray.push(doc);
-                    });
-                };
+            const foundDocs = await FAQ.find({});
+
+            // loop
+            foundDocs.forEach((doc)=>{
+                array.push(doc);
+                preNewArray.push(doc);
             });
 
 
         }else if(filter == "web_reviews"){
 
             // find web reviews
-            await WebReview.find({}, (err, data)=>{
-                if(!err){
-                    data.forEach((doc)=>{
-                        array.push(doc);
-                    });
-                };
+            const foundDocs = await WebReview.find({});
+
+            // loop
+            foundDocs.forEach((doc)=>{
+                array.push(doc);
             });
 
             // process web reviews
@@ -10849,6 +10829,7 @@ app.get("/admin_settings", async(req, res)=>{
         if(filter == "edit"){
             // send response
             res.status(200).json({message: "Imported doc successfully", data: data});
+
         }else{
             
             // send response and documents
@@ -10942,21 +10923,20 @@ app.get("/admin_import_messages", async(req, res)=>{
         const keyWords = [];
 
         // find docs
-        await Message.find({}, (err, data)=>{
-            if(!err){
-                data.reverse().forEach((doc)=>{
-                    if(filter == "New"){
-                        if(doc.seen == false){
-                            array.push(doc);
-                        };
-                    }else if(filter == "Seen"){
-                        if(doc.seen == true){
-                            array.push(doc);
-                        };
-                    }else{
-                        array.push(doc);
-                    };
-                });
+        const foundDocs = await Message.find({});
+
+        // loop
+        foundDocs.reverse().forEach((doc)=>{
+            if(filter == "New"){
+                if(doc.seen == false){
+                    array.push(doc);
+                };
+            }else if(filter == "Seen"){
+                if(doc.seen == true){
+                    array.push(doc);
+                };
+            }else{
+                array.push(doc);
             };
         });
 
@@ -11209,17 +11189,14 @@ app.get("/add_booking_count", async(req, res)=>{
 // test process chartData
 app.get("/process_chart_data", async(req, res)=>{
     try{
-        const { chartData } = await processChartData();
+        const { chartData, newStatisticsBoxData } = await processChartData();
 
-        console.log("chart data", chartData.length, chartData);
+        // console.log("chart data", chartData.length, chartData);
+        // console.log("chart data", newStatisticsBoxData);
 
         res.status(200).json({message: "All okay"});
     }catch(err){
         console.log(err);
         res.status(400).json({error: err.message});
     };
-});
-
-
-
- 
+}); 
